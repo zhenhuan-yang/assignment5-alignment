@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import torch
 from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizerBase
@@ -5,6 +7,8 @@ import gzip
 import json
 import random
 import os
+import numpy as np
+
 
 ALPACA_TEMPLATE = """Below is an instruction that describes a task. Write a response that appropriately completes the request.
 
@@ -87,3 +91,27 @@ class PackedSFTDataset(Dataset):
             "input_ids": self.input_ids[idx].clone(),
             "labels": self.labels[idx].clone()
         }
+
+
+class MemmapPackedDataset(Dataset):
+    """
+    Reads a contiguous uint32 token stream from .bin and returns fixed-length chunks:
+      input_ids: tokens[t : t+seq_length]
+      labels:    tokens[t+1 : t+1+seq_length]
+    """
+    def __init__(self, bin_path: str, seq_length: int):
+        self.seq_length = seq_length
+        self.data = np.memmap(bin_path, dtype=np.uint32, mode="r")
+
+        total_tokens = len(self.data)
+        self.num_chunks = max(0, (total_tokens - 1) // seq_length)  # must have label for last input
+        self.cutoff = self.num_chunks * seq_length  # last input index is cutoff-1, label uses cutoff
+
+    def __len__(self):
+        return self.num_chunks
+
+    def __getitem__(self, idx: int):
+        start = idx * self.seq_length
+        x_np = np.asarray(self.data[start : start + self.seq_length], dtype=np.int64)
+        y_np = np.asarray(self.data[start + 1 : start + 1 + self.seq_length], dtype=np.int64)
+        return {"input_ids": torch.from_numpy(x_np), "labels": torch.from_numpy(y_np)}
