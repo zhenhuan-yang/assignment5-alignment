@@ -10,6 +10,7 @@ from transformers import PreTrainedTokenizerBase
 
 from cs336_alignment.parsing import parse_mmlu_response
 from cs336_alignment.dataset import PackedSFTDataset
+from cs336_alignment.dpo_loss import compute_per_instance_dpo_loss
 
 def run_tokenize_prompt_and_output(
     prompt_strs: list[str],
@@ -407,4 +408,4 @@ def run_compute_per_instance_dpo_loss(
     Returns:
         torch.Tensor with the DPO loss for this example.
     """
-    raise NotImplementedError
+    return compute_per_instance_dpo_loss(lm, lm_ref, tokenizer, beta, prompt, response_chosen, response_rejected)

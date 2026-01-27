@@ -561,8 +561,8 @@ Use the Anthropic **HH** dataset (“Helpful and Harmless”). Training split in
 On the Together cluster under `/data/a5-alignment/hh`:
 ```bash
 ls /data/a5-alignment/hh
-# harmless-base.jsonl.gz helpful-base.jsonl.gz
-# helpful-online.jsonl.gz helpful-rejection-sampled.jsonl.gz
+# harmless-base/train.jsonl.gz helpful-base/train.jsonl.gz
+# helpful-online/train.jsonl.gz helpful-rejection-sampled/train.jsonl.gz
 ```
 
 Each gzipped file is JSON Lines: each line contains a JSON object with a “chosen” conversation (preferred) and a “rejected” conversation, both starting from the same prompt.
