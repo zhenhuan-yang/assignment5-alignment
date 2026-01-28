@@ -8,6 +8,7 @@ import json
 import random
 import os
 import numpy as np
+from pathlib import Path
 
 
 ALPACA_TEMPLATE = """Below is an instruction that describes a task. Write a response that appropriately completes the request.
@@ -115,3 +116,60 @@ class MemmapPackedDataset(Dataset):
         x_np = np.asarray(self.data[start : start + self.seq_length], dtype=np.int64)
         y_np = np.asarray(self.data[start + 1 : start + 1 + self.seq_length], dtype=np.int64)
         return {"input_ids": torch.from_numpy(x_np), "labels": torch.from_numpy(y_np)}
+
+
+class MemmapDPODataset(Dataset):
+    """
+    Reads DPO preference pairs from separate chosen/rejected .bin files.
+    Each example is delimited by EOS token. Pairs are aligned by index.
+    """
+    def __init__(self, chosen_bin_path: str, rejected_bin_path: str):
+        self.chosen_data = np.memmap(chosen_bin_path, dtype=np.uint32, mode="r")
+        self.rejected_data = np.memmap(rejected_bin_path, dtype=np.uint32, mode="r")
+        
+        # Load metadata
+        meta_path = Path(chosen_bin_path).parent / "train.meta.json"
+        with open(meta_path, 'r') as f:
+            self.meta = json.load(f)
+        
+        self.eos_token_id = self.meta["eos_token_id"]
+        
+        # Build index of example boundaries
+        self._build_index()
+    
+    def _build_index(self):
+        """Build index of where each example starts/ends by scanning for EOS tokens."""
+        self.chosen_boundaries = []
+        self.rejected_boundaries = []
+        
+        # Scan chosen data for EOS tokens
+        start = 0
+        for i in range(len(self.chosen_data)):
+            if self.chosen_data[i] == self.eos_token_id:
+                self.chosen_boundaries.append((start, i + 1))
+                start = i + 1
+        
+        # Scan rejected data for EOS tokens
+        start = 0
+        for i in range(len(self.rejected_data)):
+            if self.rejected_data[i] == self.eos_token_id:
+                self.rejected_boundaries.append((start, i + 1))
+                start = i + 1
+        
+        assert len(self.chosen_boundaries) == len(self.rejected_boundaries), \
+            f"Mismatch: {len(self.chosen_boundaries)} chosen vs {len(self.rejected_boundaries)} rejected"
+    
+    def __len__(self):
+        return len(self.chosen_boundaries)
+    
+    def __getitem__(self, idx: int):
+        chosen_start, chosen_end = self.chosen_boundaries[idx]
+        rejected_start, rejected_end = self.rejected_boundaries[idx]
+        
+        chosen_ids = np.asarray(self.chosen_data[chosen_start:chosen_end], dtype=np.int64)
+        rejected_ids = np.asarray(self.rejected_data[rejected_start:rejected_end], dtype=np.int64)
+        
+        return {
+            "chosen_ids": torch.from_numpy(chosen_ids),
+            "rejected_ids": torch.from_numpy(rejected_ids),
+        }
